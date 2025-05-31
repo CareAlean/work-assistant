@@ -101,14 +101,42 @@
    - 在代理服务器添加详细日志
 
 ## 文件结构
-- `index.html`：主页面
-- `css/`：样式文件
-- `js/`：JavaScript文件
-  - `deepseek-api.js`：DeepSeek API集成
-  - `chat-interface.js`：聊天界面逻辑
-  - `data-model.js`：数据模型
-- `proxy-server.js`：代理服务器
-- `test-api.js`：API测试脚本
+
+### 根目录
+- `index.html`：主页面，包含应用的HTML结构和初始化代码
+- `README.md`：项目说明文档
+- `.gitignore`：Git忽略配置
+- `.nojekyll`：GitHub Pages配置文件
+
+### 目录结构
+- `/js`：JavaScript源代码
+  - `api-key-manager.js`：API密钥管理模块
+  - `chat-interface.js`：聊天界面交互模块
+  - `data-model.js`：数据模型模块
+  - `deepseek-api.js`：DeepSeek API调用模块
+  - `deepseek-api-vercel.js`：使用Vercel代理的API模块
+
+- `/css`：样式文件
+  - `settings-panel.css`：设置面板样式
+
+- `/docs`：项目文档
+  - `API集成经验总结.md`：API集成经验文档
+  - `cloudflare-worker-部署指南.md`：Cloudflare部署指南
+  - `项目结构说明.md`：详细的项目结构文档
+
+- `/config`：配置文件
+  - `prompt.txt`：主提示词文件
+  - `deepseek_prompt.txt`：DeepSeek专用提示词
+
+- `/deepseek-proxy`：Vercel代理服务器代码
+  - `/api`：API路由
+  - `package.json`：依赖配置
+  - `vercel.json`：Vercel配置
+  - `部署指南.md`：代理部署指南
+
+- `/备份`：代码备份，按版本号存储的各个文件备份
+
+- `/archived`：暂存的不再使用的文件
 
 ## 使用提示
 1. 确保代理服务器在运行状态
