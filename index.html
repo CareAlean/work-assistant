@@ -796,7 +796,7 @@
         <div class="main-content">
             <div class="page-header">
                 <div class="page-title">仪表盘</div>
-                <div class="page-subtitle">欢迎回来，今天是 2025年5月30日</div>
+                <div class="page-subtitle">欢迎回来，今天是 <span id="current-date">加载中...</span></div>
             </div>
 
             <div class="dashboard-grid">
@@ -942,6 +942,32 @@
     <script src="js/api-key-manager.js?v=1.0.1"></script>
     <script src="js/chat-interface.js?v=1.0.3"></script>
     <script>
+        // 更新当前日期显示的函数
+        function updateCurrentDate() {
+            const dateElement = document.getElementById('current-date');
+            if (!dateElement) return;
+            
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1; // 月份从0开始，需要+1
+            const day = now.getDate();
+            const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            const weekday = weekdays[now.getDay()];
+            
+            // 格式化为中文日期
+            const formattedDate = `${year}年${month}月${day}日 ${weekday}`;
+            dateElement.textContent = formattedDate;
+            
+            // 更新时间线卡片中的相对时间
+            updateRelativeTimes();
+        }
+        
+        // 更新时间线中的相对时间
+        function updateRelativeTimes() {
+            // 如果页面上有时间线卡片中的相对时间，也可以在这里更新
+            // 例如“今天”、“明天”、“后天”等
+        }
+        
         // 测试API按钮功能
         document.getElementById('test-api-button').addEventListener('click', async function() {
             console.log('开始测试DeepSeek API...');
@@ -1026,6 +1052,11 @@
         // 初始化数据模型和聊天界面
         document.addEventListener('DOMContentLoaded', function() {
             console.log('初始化应用...');
+            
+            // 自动更新当前日期显示
+            updateCurrentDate();
+            // 每分钟更新一次日期，确保时间始终准确
+            setInterval(updateCurrentDate, 60000);
             
             // 初始化数据模型
             window.dataModel = new DataModel();
