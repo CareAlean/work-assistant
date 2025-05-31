@@ -23,8 +23,8 @@ class ChatInterface {
         this.deepseekApi = new DeepSeekAPI();
         
         // 强制关闭模拟模式，确保使用真实API
-        this.deepseekApi.useSimulation = false;
-        console.log('DeepSeek API初始化完成，模拟模式已关闭');
+        // 注意：useSimulation属性已在DeepSeekAPI类中完全移除
+        console.log('DeepSeek API初始化完成，模拟模式已禁用');
         
         // 获取DOM元素
         this.chatContainer = document.getElementById(this.options.chatContainerId);
@@ -102,6 +102,13 @@ class ChatInterface {
             return;
         }
         
+        // 检查API密钥是否已设置
+        if (!this.deepseekApi.apiKey) {
+            console.error('DeepSeek API密钥未设置');
+            this.addMessage('错误: 请先在设置中设置DeepSeek API密钥。', 'error');
+            return;
+        }
+        
         // 显示思考指示器
         this.setThinking(true);
         
@@ -110,6 +117,12 @@ class ChatInterface {
             message,
             (isThinking) => this.setThinking(isThinking),
             (response) => {
+                // 检查响应是否为空或null
+                if (!response) {
+                    console.error('收到空响应');
+                    return; // 错误已由错误回调处理
+                }
+                
                 console.log('收到响应:', response);
                 this.addMessage(response, 'ai');
                 // 保存聊天历史
