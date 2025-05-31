@@ -949,8 +949,12 @@
             // 显示测试中的消息
             window.chatInterface.addMessage('正在测试DeepSeek API，请稍等...', 'ai');
             
-            // 准备请求数据
-            const apiKey = 'sk-e14ca5937bec444da5bd8bf0aa59f4fe';
+            // 从本地存储中获取API密钥
+            const apiKey = localStorage.getItem('deepseek_api_key');
+            if (!apiKey) {
+                window.chatInterface.addMessage('错误: 请先在设置中配置DeepSeek API密钥', 'error');
+                return;
+            }
             const apiUrl = 'https://api.deepseek.com/v1/chat/completions';
             const requestData = {
                 model: 'deepseek-chat',
@@ -984,7 +988,10 @@
                     body: requestData
                 };
                 
-                const response = await fetch('https://deepseek-proxy-zeta.vercel.app/api/proxy', {
+                // 使用最新的代理URL
+                const proxyUrl = 'https://deepseek-proxy-zeta.vercel.app/api/proxy';
+                console.log('使用代理URL:', proxyUrl);
+                const response = await fetch(proxyUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

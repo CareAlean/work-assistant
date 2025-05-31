@@ -19,6 +19,8 @@ class DeepSeekAPI {
         this.apiUrl = 'https://api.deepseek.com/v1/chat/completions';
         // 使用Vercel代理解决CORS问题
         this.proxyUrl = 'https://deepseek-proxy-zeta.vercel.app/api/proxy';
+        // 备用代理地址，如果主代理失败会尝试使用
+        this.fallbackProxyUrl = 'https://cors-anywhere.herokuapp.com/https://api.deepseek.com/v1/chat/completions';
         this.model = 'deepseek-chat'; // 使用正确的模型名称
         
         // 对话历史
@@ -265,13 +267,38 @@ class DeepSeekAPI {
             console.log('正在通过Vercel代理调用DeepSeek API...');
             
             // 发送请求到Vercel代理
-            const response = await fetch(this.proxyUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(proxyData)
-            });
+            console.log('尝试使用主代理地址:', this.proxyUrl);
+            let response;
+            try {
+                response = await fetch(this.proxyUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(proxyData),
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+            } catch (proxyError) {
+                console.warn('主代理请求失败，尝试直接调用API:', proxyError);
+                
+                // 尝试直接调用API（可能会有CORS问题）
+                try {
+                    response = await fetch(this.apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + this.apiKey
+                        },
+                        body: JSON.stringify(requestData),
+                        mode: 'cors',
+                        cache: 'no-cache'
+                    });
+                } catch (directError) {
+                    console.error('直接API调用也失败，错误:', directError);
+                    throw new Error('所有API调用方式均失败: ' + directError.message);
+                }
+            }
             
             // 检查响应状态
             if (!response.ok) {
@@ -310,8 +337,20 @@ class DeepSeekAPI {
                 this.conversationHistory.pop();
             }
             
+            // 详细记录错误信息，帮助调试
+            let detailedError = error.message;
+            if (error.stack) {
+                console.error('错误堆栈:', error.stack);
+            }
+            
+            // 检查是否是网络错误
+            if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                detailedError = '网络连接错误，请检查您的网络连接或代理设置。可能是CORS问题导致。';
+                console.warn('检测到网络错误，可能是CORS问题');
+            }
+            
             // 显示错误消息
-            const errorMessage = 'DeepSeek API调用失败: ' + error.message;
+            const errorMessage = 'DeepSeek API调用失败: ' + detailedError;
             if (onError) onError(errorMessage);
             
             return null; // 返回null而不是错误信息，让UI层处理错误显示
