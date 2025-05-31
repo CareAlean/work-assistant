@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek API 测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            min-height: 200px;
+            white-space: pre-wrap;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .loading {
+            display: inline-block;
+            margin-left: 10px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>DeepSeek API 测试</h1>
+    
+    <div>
+        <label for="apiKey">API密钥:</label>
+        <input type="text" id="apiKey" value="sk-e14ca5937bec444da5bd8bf0aa59f4fe" style="width: 100%; padding: 8px; margin-top: 5px;">
+    </div>
+    
+    <div style="margin-top: 15px;">
+        <label for="message">消息:</label>
+        <textarea id="message">你好，请简短介绍一下自己。</textarea>
+    </div>
+    
+    <button id="testButton">测试API</button>
+    <span id="loading" class="loading" style="display: none;">正在发送请求...</span>
+    
+    <div>
+        <h3>结果:</h3>
+        <div id="result">测试结果将显示在这里...</div>
+    </div>
+    
+    <script>
+        document.getElementById('testButton').addEventListener('click', async () => {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const message = document.getElementById('message').value.trim();
+            const resultDiv = document.getElementById('result');
+            const loadingSpan = document.getElementById('loading');
+            
+            if (!apiKey) {
+                resultDiv.textContent = '错误: 请输入API密钥';
+                return;
+            }
+            
+            if (!message) {
+                resultDiv.textContent = '错误: 请输入消息';
+                return;
+            }
+            
+            // 显示加载中
+            loadingSpan.style.display = 'inline-block';
+            resultDiv.textContent = '正在发送请求...';
+            
+            // 准备请求数据
+            const requestData = {
+                model: 'deepseek-llm-67b-chat',
+                messages: [
+                    {
+                        role: 'system',
+                        content: '你是一个智能助手，请简短回答问题。'
+                    },
+                    {
+                        role: 'user',
+                        content: message
+                    }
+                ],
+                temperature: 0.7,
+                max_tokens: 100
+            };
+            
+            try {
+                // 发送请求
+                const apiUrl = 'https://api.deepseek.ai/v1/chat/completions';
+                console.log('发送请求到:', apiUrl);
+                console.log('请求数据:', JSON.stringify(requestData, null, 2));
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                // 处理响应
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API响应错误 (${response.status}): ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('API响应成功:', data);
+                
+                if (data.choices && data.choices.length > 0) {
+                    const aiResponse = data.choices[0].message.content;
+                    resultDiv.innerHTML = '<strong>API调用成功!</strong>\n\n<strong>AI回复:</strong>\n' + aiResponse + '\n\n<strong>完整响应:</strong>\n' + JSON.stringify(data, null, 2);
+                } else {
+                    resultDiv.textContent = '错误: API响应格式不正确\n' + JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                console.error('API调用失败:', error);
+                resultDiv.textContent = '错误: ' + error.message;
+            } finally {
+                // 隐藏加载中
+                loadingSpan.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

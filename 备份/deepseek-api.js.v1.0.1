@@ -1,0 +1,308 @@
+/**
+ * DeepSeek API 接口
+ * 用于处理与DeepSeek AI的通信
+ * 版本: 1.0.0
+ */
+
+class DeepSeekAPI {
+    constructor(apiKey = null) {
+        // 预设API密钥，如果没有提供则使用默认值
+        this.apiKey = apiKey || 'sk-e14ca5937bec444da5bd8bf0aa59f4fe';
+        this.baseURL = 'https://api.deepseek.com'; // 假设的API地址，需要替换为实际地址
+        this.model = 'deepseek-chat'; // 默认模型
+        this.systemPrompt = this.getDefaultSystemPrompt();
+        this.conversationHistory = [];
+        this.isThinking = false;
+        
+        // 保存默认API密钥到本地存储
+        if (!localStorage.getItem('deepseek_api_key')) {
+            localStorage.setItem('deepseek_api_key', this.apiKey);
+        }
+    }
+
+    /**
+     * 设置API密钥
+     * @param {string} apiKey - DeepSeek API密钥
+     */
+    setApiKey(apiKey) {
+        this.apiKey = apiKey;
+        // 保存到本地存储，方便下次使用
+        localStorage.setItem('deepseek_api_key', apiKey);
+        return this;
+    }
+
+    /**
+     * 获取API密钥
+     * @returns {string|null} API密钥
+     */
+    getApiKey() {
+        // 如果内存中没有，尝试从本地存储获取
+        if (!this.apiKey) {
+            this.apiKey = localStorage.getItem('deepseek_api_key');
+        }
+        return this.apiKey;
+    }
+
+    /**
+     * 设置使用的模型
+     * @param {string} model - 模型名称
+     */
+    setModel(model) {
+        this.model = model;
+        return this;
+    }
+
+    /**
+     * 设置系统提示词
+     * @param {string} prompt - 系统提示词
+     */
+    setSystemPrompt(prompt) {
+        this.systemPrompt = prompt;
+        return this;
+    }
+
+    /**
+     * 获取默认的系统提示词
+     * @returns {string} 默认系统提示词
+     */
+    getDefaultSystemPrompt() {
+        return `你是一个个人工作助手AI，帮助用户管理他们的项目、需求和任务。
+你可以回答关于项目进度、任务状态、团队成员工作分配等问题。
+当用户询问特定项目、需求或任务时，你应该提供详细信息。
+如果用户询问"我有哪些未完成的任务"，你应该列出所有未完成的任务。
+如果用户询问"项目X的进度如何"，你应该提供该项目的当前进度和状态。
+如果用户询问"谁负责任务Y"，你应该告诉用户负责该任务的团队成员。
+请使用简洁、专业的语言回答问题，并在适当的时候提供可视化数据。`;
+    }
+
+    /**
+     * 发送消息到DeepSeek
+     * @param {string} message - 用户消息
+     * @param {function} onThinking - 思考状态回调
+     * @param {function} onResponse - 响应回调
+     * @param {function} onError - 错误回调
+     */
+    async sendMessage(message, onThinking = null, onResponse = null, onError = null) {
+        // 强制设置默认API密钥，确保总是有值的
+        if (!this.apiKey) {
+            this.apiKey = 'sk-e14ca5937bec444da5bd8bf0aa59f4fe';
+            localStorage.setItem('deepseek_api_key', this.apiKey);
+        }
+
+        // 更新思考状态
+        this.isThinking = true;
+        if (onThinking) onThinking(true);
+
+        // 添加用户消息到历史
+        this.conversationHistory.push({
+            role: 'user',
+            content: message
+        });
+
+        try {
+            // 准备请求数据
+            const requestData = {
+                model: this.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: this.systemPrompt
+                    },
+                    ...this.conversationHistory
+                ]
+            };
+
+            console.log('发送消息到DeepSeek API:', message);
+
+            // 开发模式下使用模拟数据，正式环境使用真实API
+            const USE_REAL_API = true;
+
+            if (USE_REAL_API) {
+                // 使用真实API
+                console.log('使用真实DeepSeek API');
+                try {
+                    const response = await fetch(`https://api.deepseek.com/v1/chat/completions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.apiKey}`
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`API响应错误 (${response.status}): ${errorText}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('DeepSeek API响应:', data);
+                    
+                    if (data && data.choices && data.choices.length > 0) {
+                        const aiResponse = data.choices[0].message.content;
+                        
+                        // 添加AI回复到历史
+                        this.conversationHistory.push({
+                            role: 'assistant',
+                            content: aiResponse
+                        });
+                        
+                        if (onResponse) onResponse(aiResponse);
+                    } else {
+                        throw new Error('API响应格式不正确');
+                    }
+                } catch (apiError) {
+                    console.error('DeepSeek API调用失败:', apiError);
+                    // 如果API调用失败，回退到模拟模式
+                    console.log('回退到模拟模式');
+                    await this.simulateApiResponse(message, onResponse);
+                }
+            } else {
+                // 使用模拟数据
+                console.log('使用模拟DeepSeek响应');
+                await this.simulateApiResponse(message, onResponse);
+            }
+        } catch (error) {
+            console.error('DeepSeek API错误:', error);
+            if (onError) onError(`API请求失败: ${error.message}`);
+        } finally {
+            // 更新思考状态
+            this.isThinking = false;
+            if (onThinking) onThinking(false);
+        }
+    }
+
+    /**
+     * 模拟API响应（开发阶段使用）
+     * @param {string} message - 用户消息
+     * @param {function} onResponse - 响应回调
+     */
+    async simulateApiResponse(message, onResponse) {
+        // 模拟网络延迟
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+        
+        // 模拟AI回复
+        let aiResponse = '';
+        
+        // 根据用户消息生成模拟回复
+        if (message.includes('未完成') || message.includes('待办')) {
+            aiResponse = `您目前有以下未完成的任务：
+1. 【高优先级】UI设计评审 - 截止时间：今天18:00
+2. 【中优先级】前端框架选型 - 截止时间：明天10:00
+3. 【中优先级】需求文档定稿 - 截止时间：后天15:00
+4. 【低优先级】团队周会准备 - 截止时间：周五14:00
+
+您还有2个项目的5个需求尚未完成。需要我列出详细信息吗？`;
+        } 
+        else if (message.includes('项目') && (message.includes('进度') || message.includes('进展'))) {
+            aiResponse = `工作助手项目当前进度为65%。
+
+已完成的里程碑：
+✅ 需求分析
+✅ 原型设计
+✅ 前端框架搭建
+
+进行中的任务：
+🔄 DeepSeek API集成 (80%)
+🔄 数据模型设计 (50%)
+🔄 仪表盘开发 (30%)
+
+下一步计划：
+📌 完成DeepSeek集成
+📌 实现本地数据存储
+📌 开发项目管理模块
+
+项目预计在6月15日前完成第一个可用版本。`;
+        }
+        else if (message.includes('负责') || message.includes('谁')) {
+            aiResponse = `当前任务负责人分配如下：
+
+1. DeepSeek API集成 - 负责人：张三
+2. 数据模型设计 - 负责人：李四
+3. 前端界面开发 - 负责人：王五
+4. 测试与部署 - 负责人：赵六
+
+张三目前负责的任务最多，共有3个进行中的任务。
+李四的工作负载最低，可以考虑分配新任务给他。`;
+        }
+        else if (message.includes('截止') || message.includes('日期')) {
+            aiResponse = `近期截止的重要事项：
+
+今天 (5月30日)：
+- UI设计评审 (18:00)
+- 客户需求确认 (22:00)
+
+明天 (5月31日)：
+- 前端框架选型 (10:00)
+- 周报提交 (18:00)
+
+后天 (6月1日)：
+- 需求文档定稿 (15:00)
+
+下周：
+- 项目启动会 (6月3日 10:00)
+- 第一轮测试 (6月5日 全天)`;
+        }
+        else {
+            aiResponse = `您好，我是您的工作助手。我可以帮您：
+
+1. 查询项目、需求和任务的状态
+2. 了解团队成员的工作分配
+3. 查看截止日期和重要事项
+4. 获取项目进度报告
+
+请告诉我您需要了解什么信息？`;
+        }
+        
+        // 添加AI回复到历史
+        this.conversationHistory.push({
+            role: 'assistant',
+            content: aiResponse
+        });
+        
+        if (onResponse) onResponse(aiResponse);
+    }
+
+    /**
+     * 清除对话历史
+     */
+    clearHistory() {
+        this.conversationHistory = [];
+        return this;
+    }
+
+    /**
+     * 获取对话历史
+     * @returns {Array} 对话历史
+     */
+    getHistory() {
+        return this.conversationHistory;
+    }
+
+    /**
+     * 保存对话历史到本地存储
+     */
+    saveHistory() {
+        localStorage.setItem('deepseek_conversation', JSON.stringify(this.conversationHistory));
+        return this;
+    }
+
+    /**
+     * 从本地存储加载对话历史
+     */
+    loadHistory() {
+        const saved = localStorage.getItem('deepseek_conversation');
+        if (saved) {
+            try {
+                this.conversationHistory = JSON.parse(saved);
+            } catch (e) {
+                console.error('加载对话历史失败:', e);
+                this.conversationHistory = [];
+            }
+        }
+        return this;
+    }
+}
+
+// 导出DeepSeekAPI类
+window.DeepSeekAPI = DeepSeekAPI;

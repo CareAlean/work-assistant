@@ -1,0 +1,269 @@
+/**
+ * 聊天界面交互
+ * 用于处理DeepSeek聊天界面的交互逻辑
+ * 版本: 1.0.0
+ */
+
+class ChatInterface {
+    constructor(options = {}) {
+        // 默认选项 - 使用与HTML中实际存在的ID
+        this.options = Object.assign({
+            chatContainerId: 'chat-container', // 整个聊天容器
+            messagesContainerId: 'chat-messages', // 消息容器
+            inputContainerId: 'chat-input', // 输入容器
+            inputFieldId: 'chat-input-field', // 输入框
+            sendButtonId: 'chat-send-button', // 发送按钮
+            thinkingIndicatorId: 'thinking-indicator', // 思考指示器
+            welcomeMessage: '您好，我是您的工作助手。我可以帮您查询项目、需求和任务的状态，以及团队成员的工作分配。请问有什么可以帮您的？'
+        }, options);
+        
+        console.log('初始化聊天界面...');
+        
+        // 初始化DeepSeek API
+        this.deepseekApi = new DeepSeekAPI();
+        
+        // 强制关闭模拟模式，确保使用真实API
+        this.deepseekApi.useSimulation = false;
+        console.log('DeepSeek API初始化完成，模拟模式已关闭');
+        
+        // 获取DOM元素
+        this.chatContainer = document.getElementById(this.options.chatContainerId);
+        this.messagesContainer = document.getElementById(this.options.messagesContainerId);
+        this.inputContainer = document.getElementById(this.options.inputContainerId);
+        this.inputField = document.getElementById(this.options.inputFieldId);
+        this.sendButton = document.getElementById(this.options.sendButtonId);
+        this.thinkingIndicator = document.getElementById(this.options.thinkingIndicatorId);
+        
+        // 绑定事件处理器
+        this.bindEvents();
+        
+        // 加载历史对话
+        this.loadChatHistory();
+        
+        // 显示欢迎消息
+        if (this.messagesContainer.children.length === 0) {
+            this.addMessage(this.options.welcomeMessage, 'ai');
+        }
+        
+        console.log('聊天界面初始化完成');
+    }
+    
+
+    
+    /**
+     * 绑定事件处理器
+     */
+    bindEvents() {
+        // 发送按钮点击事件
+        if (this.sendButton) {
+            this.sendButton.addEventListener('click', () => this.sendMessage());
+        }
+        
+        // 输入框回车事件
+        if (this.inputField) {
+            this.inputField.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.sendMessage();
+                }
+            });
+            
+            // 自动调整输入框高度
+            this.inputField.addEventListener('input', () => {
+                this.inputField.style.height = 'auto';
+                this.inputField.style.height = (this.inputField.scrollHeight) + 'px';
+            });
+        }
+    }
+    
+    /**
+     * 发送消息
+     */
+    sendMessage() {
+        // 获取用户输入
+        const message = this.inputField.value.trim();
+        
+        // 检查消息是否为空
+        if (!message) return;
+        
+        console.log('发送消息:', message);
+        
+        // 添加用户消息到聊天界面
+        this.addMessage(message, 'user');
+        
+        // 清空输入框
+        this.inputField.value = '';
+        this.inputField.style.height = 'auto';
+        
+        // 检查DeepSeek API实例是否已设置
+        if (!this.deepseekApi) {
+            console.error('DeepSeek API实例未设置');
+            this.addMessage('错误: DeepSeek API实例未设置，无法发送消息。请刷新页面后重试。', 'error');
+            return;
+        }
+        
+        // 显示思考指示器
+        this.setThinking(true);
+        
+        // 发送消息到DeepSeek API
+        this.deepseekApi.sendMessage(
+            message,
+            (isThinking) => this.setThinking(isThinking),
+            (response) => {
+                console.log('收到响应:', response);
+                this.addMessage(response, 'ai');
+                // 保存聊天历史
+                this.saveChatHistory();
+            },
+            (error) => {
+                console.error('错误:', error);
+                this.addMessage(`错误: ${error}`, 'error');
+            }
+        );
+    }
+    
+    /**
+     * 添加消息到聊天界面
+     * @param {string} content - 消息内容
+     * @param {string} type - 消息类型 (user/ai/error)
+     */
+    addMessage(content, type) {
+        // 创建消息元素
+        const messageEl = document.createElement('div');
+        messageEl.className = `message message-${type}`;
+        
+        // 格式化消息内容（支持Markdown）
+        const formattedContent = this.formatMessage(content);
+        
+        // 设置消息内容
+        messageEl.innerHTML = `
+            <div>${formattedContent}</div>
+            <div class="message-time">${this.getCurrentTime()}</div>
+        `;
+        
+        // 添加到消息容器
+        this.messagesContainer.appendChild(messageEl);
+        
+        // 滚动到底部
+        this.scrollToBottom();
+    }
+    
+    /**
+     * 格式化消息内容
+     * @param {string} content - 消息内容
+     * @returns {string} 格式化后的内容
+     */
+    formatMessage(content) {
+        // 简单的Markdown格式化
+        let formatted = content
+            // 代码块
+            .replace(/\`\`\`([^`]+)\`\`\`/g, '<pre><code>$1</code></pre>')
+            // 行内代码
+            .replace(/\`([^`]+)\`/g, '<code>$1</code>')
+            // 粗体
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            // 斜体
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            // 链接
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+            // 列表项
+            .replace(/^- (.+)$/gm, '<li>$1</li>')
+            // 标题
+            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+            .replace(/^# (.+)$/gm, '<h1>$1</h1>');
+            
+        // 处理列表
+        if (formatted.includes('<li>')) {
+            formatted = formatted.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
+        }
+        
+        // 处理换行
+        formatted = formatted.replace(/\n/g, '<br>');
+        
+        return formatted;
+    }
+    
+    /**
+     * 获取当前时间
+     * @returns {string} 格式化的时间字符串
+     */
+    getCurrentTime() {
+        const now = new Date();
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+    }
+    
+    /**
+     * 设置思考状态
+     * @param {boolean} isThinking - 是否正在思考
+     */
+    setThinking(isThinking) {
+        if (this.thinkingIndicator) {
+            this.thinkingIndicator.style.display = isThinking ? 'block' : 'none';
+        }
+    }
+    
+    /**
+     * 滚动到底部
+     */
+    scrollToBottom() {
+        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+    }
+    
+    /**
+     * 保存聊天历史
+     */
+    saveChatHistory() {
+        this.deepseekApi.saveHistory();
+    }
+    
+    /**
+     * 加载聊天历史
+     */
+    loadChatHistory() {
+        // 加载DeepSeek API中的历史
+        this.deepseekApi.loadHistory();
+        
+        // 清空消息容器
+        this.messagesContainer.innerHTML = '';
+        
+        // 添加历史消息到界面
+        const history = this.deepseekApi.getHistory();
+        history.forEach(message => {
+            this.addMessage(message.content, message.role === 'user' ? 'user' : 'ai');
+        });
+    }
+    
+    /**
+     * 清除聊天历史
+     */
+    clearChatHistory() {
+        // 清空DeepSeek API中的历史
+        this.deepseekApi.clearHistory();
+        
+        // 清空消息容器
+        this.messagesContainer.innerHTML = '';
+        
+        // 显示欢迎消息
+        this.addMessage(this.options.welcomeMessage, 'ai');
+        
+        // 保存空历史
+        this.saveChatHistory();
+    }
+    
+    /**
+     * 设置API密钥
+     * @param {string} apiKey - DeepSeek API密钥
+     */
+    setApiKey(apiKey) {
+        this.deepseekApi.setApiKey(apiKey);
+    }
+}
+
+// 在页面加载完成后初始化聊天界面
+document.addEventListener('DOMContentLoaded', () => {
+    // 全局变量，方便调试和访问
+    window.chatInterface = new ChatInterface();
+});

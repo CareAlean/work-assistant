@@ -1,0 +1,283 @@
+/**
+ * DeepSeek API 接口
+ * 用于处理与DeepSeek AI的通信
+ * 版本: 2.0.0
+ */
+class DeepSeekAPI {
+    constructor(apiKey = null) {
+        // 预设API密钥，如果没有提供则使用默认值
+        this.apiKey = apiKey || 'sk-e14ca5937bec444da5bd8bf0aa59f4fe';
+        
+        // 从本地存储加载已保存的API密钥
+        const savedApiKey = localStorage.getItem('deepseek_api_key');
+        if (savedApiKey) {
+            this.apiKey = savedApiKey;
+        } else {
+            // 如果没有保存过，则保存默认密钥
+            localStorage.setItem('deepseek_api_key', this.apiKey);
+        }
+        
+        // API配置
+        this.apiUrl = 'https://api.deepseek.com/v1/chat/completions';
+        this.model = 'deepseek-chat'; // 使用正确的模型名称
+        
+        // 对话历史
+        this.conversationHistory = [];
+        this.systemPrompt = this.getDefaultSystemPrompt();
+        
+        // 模拟模式（默认关闭）
+        this.useSimulation = false;
+        
+        console.log('DeepSeek API 初始化完成');
+    }
+    
+    // 设置API密钥
+    setApiKey(apiKey) {
+        this.apiKey = apiKey;
+        localStorage.setItem('deepseek_api_key', apiKey);
+        return this;
+    }
+    
+    // 从文件加载提示词
+    async loadPromptFromFile() {
+        try {
+            const response = await fetch('prompts/deepseek_prompt.txt');
+            if (!response.ok) {
+                console.error('加载提示词文件失败:', response.status);
+                return this.getFallbackSystemPrompt();
+            }
+            const promptText = await response.text();
+            console.log('成功从文件加载提示词');
+            return promptText;
+        } catch (error) {
+            console.error('加载提示词文件错误:', error);
+            return this.getFallbackSystemPrompt();
+        }
+    }
+    
+    // 获取默认系统提示词（如果文件加载失败）
+    getFallbackSystemPrompt() {
+        return '你是一个智能工作助手，可以帮助用户管理项目、需求和任务。你应该提供清晰、简洁、有帮助的回答，并尽量满足用户的需求。';
+    }
+    
+    // 获取系统提示词
+    async getDefaultSystemPrompt() {
+        if (!this._cachedPrompt) {
+            this._cachedPrompt = await this.loadPromptFromFile();
+        }
+        return this._cachedPrompt;
+    }
+    
+    // 设置系统提示词
+    setSystemPrompt(prompt) {
+        this.systemPrompt = prompt;
+        return this;
+    }
+    
+    // 发送消息到DeepSeek API
+    async sendMessage(message, onThinking = null, onResponse = null, onError = null) {
+        // 更新思考状态
+        if (onThinking) onThinking(true);
+        
+        // 添加用户消息到历史
+        this.conversationHistory.push({
+            role: 'user',
+            content: message
+        });
+        
+        try {
+            let response;
+            
+            // 如果使用模拟模式，生成模拟响应
+            if (this.useSimulation) {
+                console.log('使用模拟模式');
+                response = this.simulateResponse(message);
+                
+                // 添加AI响应到历史
+                this.conversationHistory.push({
+                    role: 'assistant',
+                    content: response
+                });
+                
+                // 更新思考状态
+                if (onThinking) onThinking(false);
+                
+                // 调用响应回调
+                if (onResponse) onResponse(response);
+                
+                return response;
+            }
+            
+            // 确保系统提示词已加载
+            const systemPrompt = await this.getDefaultSystemPrompt();
+            
+            // 准备请求数据
+            const requestData = {
+                model: this.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: systemPrompt
+                    },
+                    ...this.conversationHistory
+                ],
+                temperature: 0.7,
+                max_tokens: 2000
+            };
+            
+            console.log('请求数据:', requestData);
+            console.log('请求URL:', this.apiUrl);
+            
+            // 使用代理服务器发送API请求
+            console.log('正在通过代理调用DeepSeek API...');
+            
+            // 准备代理请求数据
+            const proxyData = {
+                url: this.apiUrl,
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + this.apiKey
+                },
+                body: requestData
+            };
+            
+            // 发送到代理服务器
+            const response = await fetch('http://localhost:3000/proxy', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(proxyData)
+            });
+            
+            // 检查响应状态
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('API响应错误:', response.status, errorText);
+                throw new Error('API响应错误: ' + response.status + ': ' + errorText);
+            }
+            
+            // 解析响应
+            const data = await response.json();
+            console.log('API响应数据:', data);
+            
+            // 处理有效响应
+            if (data && data.choices && data.choices.length > 0) {
+                const aiResponse = data.choices[0].message.content;
+                console.log('收到API响应');
+                
+                // 添加AI回复到历史
+                this.conversationHistory.push({
+                    role: 'assistant',
+                    content: aiResponse
+                });
+                
+                // 调用响应回调
+                if (onResponse) onResponse(aiResponse);
+            } else {
+                throw new Error('API响应格式不正确');
+            }
+        } catch (error) {
+            console.error('API调用失败:', error);
+            
+            // 如果API调用失败，切换到模拟模式
+            console.log('切换到模拟模式');
+            this.useSimulation = true;
+            
+            if (onError) onError('DeepSeek API调用失败: ' + error.message);
+            await this.getSimulatedResponse(message, onResponse);
+        } finally {
+            // 更新思考状态
+            if (onThinking) onThinking(false);
+        }
+    }
+    
+    // 获取模拟响应
+    async getSimulatedResponse(message, onResponse) {
+        console.log('生成模拟响应...');
+        
+        // 模拟思考时间
+        const thinkingTime = 1000 + Math.random() * 2000;
+        await new Promise(resolve => setTimeout(resolve, thinkingTime));
+        
+        // 生成模拟响应
+        let aiResponse = '您好，我是您的工作助手。我可以帮您查询项目进度、任务状态和团队成员分工等信息。请告诉我您需要了解什么？';
+        
+        // 根据用户消息生成不同的模拟回复
+        const lowerMessage = message.toLowerCase();
+        if (lowerMessage.includes('任务') || lowerMessage.includes('待办')) {
+            aiResponse = '您目前有以下未完成的任务：\n\n1. 【高优先级】DeepSeek API集成 - 截止时间：今天18:00\n2. 【中优先级】前端界面优化 - 截止时间：明天10:00\n3. 【中优先级】数据模型实现 - 截止时间：后天15:00\n4. 【低优先级】测试计划编写 - 截止时间：周五14:00';
+        } 
+        else if (lowerMessage.includes('项目') && 
+                (lowerMessage.includes('进度') || lowerMessage.includes('状态'))) {
+            aiResponse = '工作助手项目当前进度为65%。\n\n已完成的里程碑：\n1. 需求分析与规划 - 100%\n2. UI设计 - 90%\n3. 前端开发 - 70%\n4. 后端开发 - 60%\n5. API集成 - 50%';
+        }
+        
+        // 添加AI回复到历史
+        this.conversationHistory.push({
+            role: 'assistant',
+            content: aiResponse
+        });
+        
+        // 调用回调函数
+        if (onResponse) onResponse(aiResponse);
+    }
+    
+    // 清除对话历史
+    clearConversationHistory() {
+        this.conversationHistory = [];
+        console.log('对话历史已清除');
+        return this;
+    }
+    
+    /**
+     * 保存对话历史到本地存储
+     */
+    saveHistory() {
+        try {
+            localStorage.setItem('deepseek_conversation_history', JSON.stringify(this.conversationHistory));
+            console.log('对话历史已保存到本地存储');
+        } catch (error) {
+            console.error('保存对话历史失败:', error);
+        }
+        return this;
+    }
+    
+    /**
+     * 从本地存储加载对话历史
+     */
+    loadHistory() {
+        try {
+            const savedHistory = localStorage.getItem('deepseek_conversation_history');
+            if (savedHistory) {
+                this.conversationHistory = JSON.parse(savedHistory);
+                console.log('从本地存储加载了对话历史');
+            }
+        } catch (error) {
+            console.error('加载对话历史失败:', error);
+        }
+        return this;
+    }
+    
+    /**
+     * 清除对话历史
+     */
+    clearHistory() {
+        this.conversationHistory = [];
+        try {
+            localStorage.removeItem('deepseek_conversation_history');
+            console.log('对话历史已清除');
+        } catch (error) {
+            console.error('清除对话历史失败:', error);
+        }
+        return this;
+    }
+    
+    /**
+     * 获取对话历史
+     */
+    getHistory() {
+        return this.conversationHistory;
+    }
+}

@@ -1,0 +1,558 @@
+/**
+ * DeepSeek API 接口
+ * 用于处理与DeepSeek AI的通信
+ * 版本: 2.0.0
+ */
+
+class DeepSeekAPI {
+    constructor(apiKey = null) {
+        // 预设API密钥，如果没有提供则使用默认值
+        this.apiKey = apiKey || 'sk-e14ca5937bec444da5bd8bf0aa59f4fe';
+        
+        // 从本地存储加载已保存的API密钥
+        const savedApiKey = localStorage.getItem('deepseek_api_key');
+        if (savedApiKey) {
+            this.apiKey = savedApiKey;
+        } else {
+            // 如果没有保存过，则保存默认密钥
+            localStorage.setItem('deepseek_api_key', this.apiKey);
+        }
+        
+        // 设置API配置
+        this.API_CONFIG = {
+            baseURL: 'https://api.deepseek.ai',
+            endpoint: '/v1/chat/completions',
+            models: {
+                primary: 'deepseek-chat', // 根据官方文档使用正确的模型名称
+                fallbacks: ['deepseek-chat', 'deepseek-coder'] // 备用模型
+            }
+        };
+        
+        // 初始化会话状态
+        this.conversationHistory = [];
+        this.isThinking = false;
+        
+        // 设置模拟模式（默认关闭）
+        this.useSimulation = false;
+        
+        // 设置系统提示词
+        this.systemPrompt = this.getDefaultSystemPrompt();
+        
+        // 初始化日志
+        this.initializeLogger();
+        
+        this.logger.info('✅ DeepSeek API 初始化完成');
+    }
+    
+    /**
+     * 初始化日志器
+     */
+    initializeLogger() {
+        this.logger = {
+            info: (message) => console.log(`%c[信息] ${message}`, 'color: #4CAF50'),
+            warn: (message) => console.log(`%c[警告] ${message}`, 'color: #FF9800'),
+            error: (message, error) => {
+                console.log(`%c[错误] ${message}`, 'color: #F44336');
+                if (error) console.error(error);
+            },
+            debug: (message, data) => {
+                console.log(`%c[调试] ${message}`, 'color: #2196F3');
+                if (data) console.log(data);
+            }
+        };
+    }
+
+    /**
+     * 设置API密钥
+     * @param {string} apiKey - DeepSeek API密钥
+     */
+    setApiKey(apiKey) {
+        if (!apiKey || apiKey.trim() === '') {
+            this.logger.error('无效的API密钥');
+            return this;
+        }
+        
+        this.apiKey = apiKey.trim();
+        // 保存到本地存储，方便下次使用
+        localStorage.setItem('deepseek_api_key', this.apiKey);
+        this.logger.info('已更新API密钥');
+        return this;
+    }
+
+    /**
+     * 获取API密钥
+     * @returns {string|null} API密钥
+     */
+    getApiKey() {
+        // 如果内存中没有，尝试从本地存储获取
+        if (!this.apiKey) {
+            this.apiKey = localStorage.getItem('deepseek_api_key');
+        }
+        return this.apiKey;
+    }
+
+    /**
+     * 设置使用的模型
+     * @param {string} model - 模型名称
+     */
+    setModel(model) {
+        this.model = model;
+        return this;
+    }
+
+    /**
+     * 设置系统提示词
+     * @param {string} prompt - 系统提示词
+     */
+     */
+    getDefaultSystemPrompt() {
+        return `你是一个智能工作助手，可以帮助用户管理项目、需求和任务。你应该提供清晰、简洁、有帮助的回答，并尽量满足用户的需求。
+
+当用户询问项目、需求或任务相关信息时，请提供具体、相关的信息，并在适当的时候主动提供建议或解决方案。
+
+你的目标是帮助用户提高工作效率，减轻管理负担，并确保重要信息不会被遗忘。`;
+    }
+
+    /**
+     * 设置自定义系统提示词
+     * @param {string} prompt - 自定义系统提示词
+     */
+    setSystemPrompt(prompt) {
+        if (!prompt || prompt.trim() === '') {
+            this.logger.warn('提示词为空，使用默认提示词');
+            this.systemPrompt = this.getDefaultSystemPrompt();
+            return this;
+        }
+        
+        this.systemPrompt = prompt.trim();
+        this.logger.info('已设置自定义系统提示词');
+        return this;
+    }
+
+    /**
+     * 清除对话历史
+     */
+    clearConversationHistory() {
+        this.conversationHistory = [];
+        this.logger.info('对话历史已清除');
+        return this;
+    }
+    
+    /**
+     * 切换模拟模式
+     * @param {boolean} enabled - 是否启用模拟模式
+     */
+    toggleSimulationMode(enabled) {
+        this.useSimulation = enabled;
+        this.logger.info(`模拟模式已${enabled ? '开启' : '关闭'}`);
+        return this;
+    }
+
+    /**
+     * 发送消息到DeepSeek API
+     * @param {string} message - 用户消息
+     * @param {function} onThinking - 思考状态回调
+     * @param {function} onResponse - 响应回调
+     * @param {function} onError - 错误回调
+     */
+    async sendMessage(message, onThinking = null, onResponse = null, onError = null) {
+        // 更新思考状态
+        this.isThinking = true;
+        if (onThinking) onThinking(true);
+        
+        // 添加用户消息到历史
+        this.conversationHistory.push({
+            role: 'user',
+            content: message
+        });
+        
+        this.logger.info(`发送消息: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
+        
+        try {
+            // 如果开启了模拟模式，使用模拟数据
+            if (this.useSimulation) {
+                this.logger.warn('使用模拟模式响应');
+                await this.getSimulatedResponse(message, onResponse);
+                return;
+            }
+            
+            // 使用真实API
+            await this.callDeepSeekAPI(message, onResponse, onError);
+            
+        } catch (error) {
+            this.logger.error('处理消息时发生错误', error);
+            if (onError) onError(`发生错误: ${error.message}`);
+        } finally {
+            // 更新思考状态
+            this.isThinking = false;
+            if (onThinking) onThinking(false);
+        }
+    }
+    
+    /**
+     * 调用DeepSeek API
+     * @param {string} message - 用户消息
+     * @param {function} onResponse - 响应回调
+     * @param {function} onError - 错误回调
+     */
+    async callDeepSeekAPI(message, onResponse, onError) {
+        // 准备请求数据
+        const requestData = {
+            model: this.API_CONFIG.models.primary,
+            messages: [
+                {
+                    role: 'system',
+                    content: this.systemPrompt
+                },
+                ...this.conversationHistory
+            ],
+            temperature: 0.7,
+            max_tokens: 2000
+        };
+        
+        this.logger.debug('请求数据', requestData);
+        
+        // 构建完整API URL
+        const apiUrl = `${this.API_CONFIG.baseURL}${this.API_CONFIG.endpoint}`;
+        this.logger.debug(`请求URL: ${apiUrl}`);
+        
+        try {
+            // 发送API请求
+            this.logger.info('正在调用DeepSeek API...');
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.apiKey}`
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            // 检查响应状态
+            if (!response.ok) {
+                const errorText = await response.text();
+                this.logger.error(`API响应错误 (${response.status})`, errorText);
+                
+                // 如果是模型错误，尝试备用模型
+                if (response.status === 404 || 
+                    (errorText && (errorText.includes('model') || errorText.includes('not found')))) {
+                    return await this.tryFallbackModels(message, onResponse, onError);
+                }
+                
+                throw new Error(`API响应错误 (${response.status}): ${errorText}`);
+            }
+            
+            // 解析响应
+            const data = await response.json();
+            this.logger.debug('API响应数据', data);
+            
+            // 处理有效响应
+            if (data && data.choices && data.choices.length > 0) {
+                const aiResponse = data.choices[0].message.content;
+                this.logger.info('收到API响应');
+                
+                // 添加AI回复到历史
+                this.conversationHistory.push({
+                    role: 'assistant',
+                    content: aiResponse
+                });
+                
+                // 调用响应回调
+                if (onResponse) onResponse(aiResponse);
+                return aiResponse;
+            } else {
+                throw new Error('API响应格式不正确');
+            }
+        } catch (error) {
+            this.logger.error('API调用失败', error);
+            
+            // 如果是网络错误，尝试备用模型
+            if (error.message.includes('Failed to fetch') || 
+                error.message.includes('Network') || 
+                error.message.includes('CORS')) {
+                return await this.tryFallbackModels(message, onResponse, onError);
+            }
+            
+            // 如果所有尝试都失败，则切换到模拟模式
+            this.logger.warn('切换到模拟模式');
+            this.useSimulation = true;
+            
+            if (onError) onError(`DeepSeek API调用失败: ${error.message}`);
+            await this.getSimulatedResponse(message, onResponse);
+        }
+    }
+    
+    /**
+     * 尝试备用模型
+     */
+    async tryFallbackModels(message, onResponse, onError) {
+        this.logger.warn('尝试备用模型...');
+        
+        // 尝试每个备用模型
+        for (const model of this.API_CONFIG.models.fallbacks) {
+            if (model === this.API_CONFIG.models.primary) continue;
+            
+            this.logger.info(`尝试模型: ${model}`);
+            const originalModel = this.API_CONFIG.models.primary;
+            this.API_CONFIG.models.primary = model;
+            
+            try {
+                // 使用新模型重试
+                const result = await this.callDeepSeekAPI(message, onResponse, null);
+                this.logger.info(`模型 ${model} 调用成功`);
+                return result;
+            } catch (retryError) {
+                this.logger.error(`模型 ${model} 调用失败`, retryError);
+                // 恢复原始模型并继续尝试下一个
+                this.API_CONFIG.models.primary = originalModel;
+            }
+        }
+        
+        // 所有模型都失败，切换到模拟模式
+        this.logger.warn('所有模型都失败，切换到模拟模式');
+        this.useSimulation = true;
+        
+        if (onError) onError('所有DeepSeek模型调用失败，已切换到模拟模式');
+        return await this.getSimulatedResponse(message, onResponse);
+    }
+    
+    /**
+     * 使用备用模型重试
+     */
+    async retryWithAlternativeModel(message, onThinking, onResponse, onError) {
+        console.log('尝试使用备用模型重试...');
+        
+        // 尝试每个备用模型
+        for (const model of this.availableModels.alternatives) {
+            if (model === this.currentModel) continue; // 跳过当前模型
+            
+            console.log(`尝试模型: ${model}`);
+            this.currentModel = model;
+            
+            try {
+                // 重新调用sendMessage，但不传递回调以避免重复回调
+                await this.sendMessage(message, onThinking, onResponse, null);
+                console.log(`模型 ${model} 成功！`);
+                return; // 成功则返回
+            } catch (retryError) {
+                console.error(`模型 ${model} 失败:`, retryError);
+                // 继续尝试下一个模型
+            }
+        }
+        
+        // 所有模型都失败，返回错误
+        console.log('所有模型都失败，切换到模拟模式');
+        this.simulationMode = true;
+        localStorage.setItem('deepseek_simulation_mode', 'true');
+        
+        // 使用模拟数据
+        await this.getSimulatedResponse(message, onResponse);
+        
+        if (onError) onError('所有DeepSeek模型调用失败，已切换到模拟模式');
+    }
+    
+    /**
+     * 获取模拟响应
+     * @param {string} message - 用户消息
+     * @param {function} onResponse - 响应回调
+     */
+    async getSimulatedResponse(message, onResponse) {
+        this.logger.info('生成模拟响应...');
+        
+        // 模拟思考时间
+        const thinkingTime = 1000 + Math.random() * 2000;
+        await new Promise(resolve => setTimeout(resolve, thinkingTime));
+        
+        // 生成模拟响应
+        let aiResponse = this.generateSimulatedResponse(message);
+        
+        // 添加到对话历史
+        this.conversationHistory.push({
+            role: 'assistant',
+            content: aiResponse
+        });
+        
+        // 调用回调函数
+        if (onResponse) onResponse(aiResponse);
+        return aiResponse;
+    }
+    
+    /**
+     * 生成模拟响应文本
+     * @param {string} message - 用户消息
+     * @returns {string} - 模拟响应
+     */
+    generateSimulatedResponse(message) {
+        // 将消息转为小写以进行大小写不敏感的匹配
+        const lowerMessage = message.toLowerCase();
+        
+        // 匹配关键词并返回相应的模拟回复
+        if (lowerMessage.includes('未完成') || lowerMessage.includes('待办') || 
+            lowerMessage.includes('任务') || lowerMessage.includes('待处理')) {
+            return this.getTaskResponse();
+        } 
+        else if (lowerMessage.includes('项目') && 
+                (lowerMessage.includes('进度') || lowerMessage.includes('进展') || 
+                 lowerMessage.includes('状态'))) {
+            return this.getProjectStatusResponse();
+        }
+        else if (lowerMessage.includes('负责') || lowerMessage.includes('谁') || 
+                lowerMessage.includes('团队') || lowerMessage.includes('成员')) {
+            return this.getTeamInfoResponse();
+        }
+        else if (lowerMessage.includes('截止') || lowerMessage.includes('日期') || 
+                lowerMessage.includes('时间') || lowerMessage.includes('时间线')) {
+            return this.getTimelineResponse();
+        }
+        else if (lowerMessage.includes('api') || lowerMessage.includes('deepseek') || 
+                lowerMessage.includes('集成')) {
+            return this.getApiIntegrationResponse();
+        }
+        else {
+            return this.getDefaultResponse();
+        }
+    }
+    
+    /**
+     * 获取任务相关的模拟响应
+     */
+    getTaskResponse() {
+        return `您目前有以下未完成的任务：
+
+1. 【高优先级】DeepSeek API集成 - 截止时间：今天18:00
+2. 【中优先级】前端界面优化 - 截止时间：明天10:00
+3. 【中优先级】数据模型实现 - 截止时间：后天15:00
+4. 【低优先级】测试计划编写 - 截止时间：周五14:00
+
+您还有2个项目的5个需求尚未完成。需要我列出详细信息吗？`;
+    }
+    
+    /**
+     * 获取项目状态相关的模拟响应
+     */
+    getProjectStatusResponse() {
+        return `工作助手项目当前进度为65%。
+
+已完成的里程碑：
+1. 需求分析与规划 - 100%
+2. UI设计 - 90%
+3. 前端开发 - 70%
+4. 后端开发 - 60%
+5. API集成 - 50%
+
+当前正在进行：
+- DeepSeek API集成
+- 数据模型实现
+- 用户界面优化
+
+计划在下周完成第一个可用版本。`;
+    }
+    
+    /**
+     * 获取团队信息相关的模拟响应
+     */
+    getTeamInfoResponse() {
+        return `当前项目团队成员与责任分配：
+
+1. 项目管理: 张三 - 负责总体协调与进度跟踪
+2. UI/UX设计: 李四 - 负责界面设计与用户体验
+3. 前端开发: 王五 - 负责前端实现与交互
+4. 后端开发: 赵六 - 负责服务器与数据库
+5. DeepSeek API集成: 您 - 负责AI能力集成
+
+如果您需要与某位团队成员协作，我可以帮助您发送消息或安排会议。`;
+    }
+    
+    /**
+     * 获取时间线相关的模拟响应
+     */
+    getTimelineResponse() {
+        return `近期截止的重要事项：
+
+今天 (5月30日)：
+- UI设计评审 (18:00)
+- 客户需求确认 (22:00)
+
+明天 (5月31日)：
+- 前端框架选型 (10:00)
+- 周报提交 (18:00)
+
+后天 (6月1日)：
+- 需求文档定稿 (15:00)
+
+下周：
+- 项目启动会 (6月3日 10:00)
+- 第一轮测试 (6月5日 全天)`;
+    }
+    
+    /**
+     * 获取API集成相关的模拟响应
+     */
+    getApiIntegrationResponse() {
+        return `DeepSeek API集成进度：
+
+1. API文档阅读与理解 - 100%
+2. API接口测试 - 80%
+3. API集成开发 - 60%
+4. API集成测试 - 40%
+
+计划在下周完成API集成。`;
+    }
+    
+    /**
+     * 获取默认的模拟响应
+     */
+    getDefaultResponse() {
+        return `您好，我是您的工作助手。我可以帮您：
+
+1. 查询项目、需求和任务的状态
+2. 了解团队成员的工作分配
+3. 查看截止日期和重要事项
+4. 获取项目进度报告
+
+请告诉我您需要了解什么信息？`;
+    }
+
+    /**
+     * 清除对话历史
+     */
+    clearHistory() {
+        this.conversationHistory = [];
+        return this;
+    }
+
+    /**
+     * 获取对话历史
+     * @returns {Array} 对话历史
+     */
+    getHistory() {
+        return this.conversationHistory;
+    }
+
+    /**
+     * 保存对话历史到本地存储
+     */
+    saveHistory() {
+        localStorage.setItem('deepseek_conversation', JSON.stringify(this.conversationHistory));
+        return this;
+    }
+
+    /**
+     * 从本地存储加载对话历史
+     */
+    loadHistory() {
+        const saved = localStorage.getItem('deepseek_conversation');
+        if (saved) {
+            try {
+                this.conversationHistory = JSON.parse(saved);
+            } catch (e) {
+                console.error('加载对话历史失败:', e);
+                this.conversationHistory = [];
+            }
+        }
+        return this;
+    }
+}
+
+// 导出DeepSeekAPI类
+window.DeepSeekAPI = DeepSeekAPI;

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据模型测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .test-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            min-height: 100px;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        pre {
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>个人工作助手 - 数据模型测试</h1>
+    
+    <div class="test-section">
+        <h2>1. 数据模型状态检查</h2>
+        <button id="check-data-model" class="test-button">检查数据模型</button>
+        <div id="data-model-result" class="result">
+            <span class="loading">点击按钮开始检查...</span>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. DeepSeek API 状态检查</h2>
+        <button id="check-api" class="test-button">检查API状态</button>
+        <div id="api-result" class="result">
+            <span class="loading">点击按钮开始检查...</span>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. 系统上下文生成测试</h2>
+        <button id="generate-context" class="test-button">生成系统上下文</button>
+        <div id="context-result" class="result">
+            <span class="loading">点击按钮开始生成...</span>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>4. DeepSeek API 调用测试</h2>
+        <input type="text" id="test-message" placeholder="输入测试消息，例如：我的项目有哪些？" style="width: 100%; padding: 8px; margin-bottom: 10px;">
+        <button id="send-test" class="test-button">发送测试消息</button>
+        <div id="api-call-result" class="result">
+            <span class="loading">输入消息并点击按钮开始测试...</span>
+        </div>
+    </div>
+    
+    <!-- JavaScript 文件 -->
+    <script src="js/data-model.js"></script>
+    <script src="js/test-data.js"></script>
+    <script src="js/deepseek-api.js"></script>
+    
+    <script>
+        // 等待页面加载完成
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('测试页面已加载');
+            
+            // 初始化数据模型
+            window.dataModel = new DataModel();
+            console.log('数据模型已初始化');
+            
+            // 初始化DeepSeek API
+            window.deepseekApi = new DeepSeekAPI();
+            window.deepseekApi.setDataModel(window.dataModel);
+            console.log('DeepSeek API已初始化并设置数据模型');
+            
+            // 检查数据模型按钮
+            document.getElementById('check-data-model').addEventListener('click', function() {
+                const resultDiv = document.getElementById('data-model-result');
+                resultDiv.innerHTML = '<span class="loading">正在检查数据模型...</span>';
+                
+                setTimeout(function() {
+                    try {
+                        if (!window.dataModel) {
+                            resultDiv.innerHTML = '<span style="color:red">错误: 数据模型未初始化</span>';
+                            return;
+                        }
+                        
+                        const projects = window.dataModel.projects || [];
+                        const requirements = window.dataModel.requirements || [];
+                        const tasks = window.dataModel.tasks || [];
+                        const teamMembers = window.dataModel.teamMembers || [];
+                        
+                        let html = '<h3>数据模型状态: <span style="color:green">正常</span></h3>';
+                        html += `<p>项目数量: ${projects.length}</p>`;
+                        html += `<p>需求数量: ${requirements.length}</p>`;
+                        html += `<p>任务数量: ${tasks.length}</p>`;
+                        html += `<p>团队成员数量: ${teamMembers.length}</p>`;
+                        
+                        if (projects.length > 0) {
+                            html += '<h4>项目示例:</h4>';
+                            html += `<pre>${JSON.stringify(projects[0], null, 2)}</pre>`;
+                        }
+                        
+                        resultDiv.innerHTML = html;
+                    } catch (error) {
+                        resultDiv.innerHTML = `<span style="color:red">检查数据模型时出错: ${error.message}</span>`;
+                    }
+                }, 500);
+            });
+            
+            // 检查API状态按钮
+            document.getElementById('check-api').addEventListener('click', function() {
+                const resultDiv = document.getElementById('api-result');
+                resultDiv.innerHTML = '<span class="loading">正在检查API状态...</span>';
+                
+                setTimeout(function() {
+                    try {
+                        if (!window.deepseekApi) {
+                            resultDiv.innerHTML = '<span style="color:red">错误: DeepSeek API未初始化</span>';
+                            return;
+                        }
+                        
+                        let html = '<h3>DeepSeek API状态: <span style="color:green">正常</span></h3>';
+                        html += `<p>API URL: ${window.deepseekApi.apiUrl}</p>`;
+                        html += `<p>模型名称: ${window.deepseekApi.model}</p>`;
+                        html += `<p>数据模型引用: ${window.deepseekApi.dataModel ? '<span style="color:green">已设置</span>' : '<span style="color:red">未设置</span>'}</p>`;
+                        
+                        resultDiv.innerHTML = html;
+                    } catch (error) {
+                        resultDiv.innerHTML = `<span style="color:red">检查API状态时出错: ${error.message}</span>`;
+                    }
+                }, 500);
+            });
+            
+            // 生成系统上下文按钮
+            document.getElementById('generate-context').addEventListener('click', async function() {
+                const resultDiv = document.getElementById('context-result');
+                resultDiv.innerHTML = '<span class="loading">正在生成系统上下文...</span>';
+                
+                try {
+                    if (!window.deepseekApi) {
+                        resultDiv.innerHTML = '<span style="color:red">错误: DeepSeek API未初始化</span>';
+                        return;
+                    }
+                    
+                    const systemContext = await window.deepseekApi.prepareSystemContext();
+                    
+                    let html = '<h3>系统上下文生成: <span style="color:green">成功</span></h3>';
+                    html += `<p>上下文长度: ${systemContext.length} 字符</p>`;
+                    
+                    // 检查是否包含关键信息
+                    const containsProjects = systemContext.includes('项目列表');
+                    const containsRequirements = systemContext.includes('需求列表');
+                    const containsTasks = systemContext.includes('任务列表');
+                    const containsTeamMembers = systemContext.includes('团队成员');
+                    
+                    html += '<h4>内容检查:</h4>';
+                    html += `<p>包含项目信息: ${containsProjects ? '<span style="color:green">是</span>' : '<span style="color:red">否</span>'}</p>`;
+                    html += `<p>包含需求信息: ${containsRequirements ? '<span style="color:green">是</span>' : '<span style="color:red">否</span>'}</p>`;
+                    html += `<p>包含任务信息: ${containsTasks ? '<span style="color:green">是</span>' : '<span style="color:red">否</span>'}</p>`;
+                    html += `<p>包含团队成员信息: ${containsTeamMembers ? '<span style="color:green">是</span>' : '<span style="color:red">否</span>'}</p>`;
+                    
+                    html += '<h4>上下文预览 (前200字符):</h4>';
+                    html += `<pre>${systemContext.substring(0, 200)}...</pre>`;
+                    
+                    resultDiv.innerHTML = html;
+                } catch (error) {
+                    resultDiv.innerHTML = `<span style="color:red">生成系统上下文时出错: ${error.message}</span>`;
+                }
+            });
+            
+            // 发送测试消息按钮
+            document.getElementById('send-test').addEventListener('click', async function() {
+                const resultDiv = document.getElementById('api-call-result');
+                const testMessage = document.getElementById('test-message').value.trim();
+                
+                if (!testMessage) {
+                    resultDiv.innerHTML = '<span style="color:orange">请输入测试消息</span>';
+                    return;
+                }
+                
+                resultDiv.innerHTML = '<span class="loading">正在发送测试消息...</span>';
+                
+                try {
+                    if (!window.deepseekApi) {
+                        resultDiv.innerHTML = '<span style="color:red">错误: DeepSeek API未初始化</span>';
+                        return;
+                    }
+                    
+                    // 发送消息
+                    window.deepseekApi.sendMessage(
+                        testMessage,
+                        (isThinking) => {
+                            if (isThinking) {
+                                resultDiv.innerHTML = '<span class="loading">DeepSeek AI正在思考...</span>';
+                            }
+                        },
+                        (response) => {
+                            let html = '<h3>API调用: <span style="color:green">成功</span></h3>';
+                            html += `<p><strong>测试消息:</strong> ${testMessage}</p>`;
+                            html += `<p><strong>AI响应:</strong> ${response}</p>`;
+                            
+                            // 分析响应是否包含项目信息
+                            const mentionsProjects = window.dataModel.projects.some(project => 
+                                response.includes(project.name));
+                            
+                            html += `<p><strong>数据引用分析:</strong> ${mentionsProjects ? 
+                                '<span style="color:green">成功! AI能够看到项目数据</span>' : 
+                                '<span style="color:red">失败! AI无法看到项目数据</span>'}</p>`;
+                            
+                            resultDiv.innerHTML = html;
+                        },
+                        (error) => {
+                            resultDiv.innerHTML = `<span style="color:red">API调用失败: ${error}</span>`;
+                        }
+                    );
+                } catch (error) {
+                    resultDiv.innerHTML = `<span style="color:red">发送测试消息时出错: ${error.message}</span>`;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
