@@ -333,13 +333,13 @@ class DeepSeekAPI {
         }
     }
     
-    // 获取模拟响应
-    async getSimulatedResponse(message, onResponse) {
-        console.log('生成模拟响应...');
-        
-        // 模拟思考时间
-        const thinkingTime = 1000 + Math.random() * 2000;
-        await new Promise(resolve => setTimeout(resolve, thinkingTime));
+    /**
+     * 生成模拟响应
+     * @param {string} message - 用户消息
+     * @returns {string} - 模拟响应
+     */
+    simulateResponse(message) {
+        console.log('生成简单模拟响应...');
         
         // 生成模拟响应
         let aiResponse = '您好，我是您的工作助手。我可以帮您查询项目进度、任务状态和团队成员分工等信息。请告诉我您需要了解什么？';
@@ -353,6 +353,20 @@ class DeepSeekAPI {
                 (lowerMessage.includes('进度') || lowerMessage.includes('状态'))) {
             aiResponse = '工作助手项目当前进度为65%。\n\n已完成的里程碑：\n1. 需求分析与规划 - 100%\n2. UI设计 - 90%\n3. 前端开发 - 70%\n4. 后端开发 - 60%\n5. API集成 - 50%';
         }
+        
+        return aiResponse;
+    }
+    
+    // 获取模拟响应
+    async getSimulatedResponse(message, onResponse) {
+        console.log('生成模拟响应...');
+        
+        // 模拟思考时间
+        const thinkingTime = 1000 + Math.random() * 2000;
+        await new Promise(resolve => setTimeout(resolve, thinkingTime));
+        
+        // 使用simulateResponse方法生成响应
+        const aiResponse = this.simulateResponse(message);
         
         // 添加AI回复到历史
         this.conversationHistory.push({
